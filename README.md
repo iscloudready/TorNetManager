@@ -80,7 +80,7 @@ Then, **choose an option** from the menu to perform the desired network operatio
 ```ini
 ControlPort 9051
 CookieAuthentication 1
-CookieAuthFile C:\Users\Pradeep\AppData\Roaming\tor\control_auth_cookie
+CookieAuthFile C:\Users\yourusername\AppData\Roaming\tor\control_auth_cookie
 MaxCircuitDirtiness 10
 ```
 If `torrc` is missing, the script will create it automatically.
