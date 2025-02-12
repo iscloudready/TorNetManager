@@ -65,11 +65,97 @@ class IPManager {
 
     IPManager() {
         try {
-            $this.PublicIP = (Invoke-WebRequest -Uri "http://checkip.amazonaws.com" -UseBasicParsing).Content.Trim()
+            $this.PublicIP = $this.GetCurrentIP()
+            if (-not $this.PublicIP) {
+                $this.PublicIP = "Unknown"
+            }
         } catch {
             $this.PublicIP = "Unknown"
         }
     }
+
+[string] GetCurrentIP() {
+    try {
+        Write-Host "📡 Setting up Tor SOCKS proxy connection..." -ForegroundColor Yellow
+        
+        # Define multiple IP check endpoints with increasing timeouts
+        $attempts = @(
+            @{
+                Url = "https://api.ipify.org"
+                Timeout = 10
+            },
+            @{
+                Url = "https://icanhazip.com"
+                Timeout = 15
+            },
+            @{
+                Url = "https://ident.me"
+                Timeout = 20
+            }
+        )
+
+        foreach ($attempt in $attempts) {
+            try {
+                Write-Host "🔍 Checking IP via $($attempt.Url)..." -ForegroundColor Yellow
+                
+                $result = & curl.exe --socks5-hostname "127.0.0.1:9050" `
+                                   --silent `
+                                   --connect-timeout $attempt.Timeout `
+                                   --max-time $attempt.Timeout `
+                                   --retry 2 `
+                                   --retry-delay 1 `
+                                   $attempt.Url 2>$null
+
+                if ($result -match "^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$") {
+                    # Verify it's actually a Tor exit node
+                    $verifyTor = & curl.exe --socks5-hostname "127.0.0.1:9050" `
+                                          --silent `
+                                          --max-time 10 `
+                                          "https://check.torproject.org" 2>$null
+                    
+                    if ($verifyTor -match "Congratulations\. This browser is configured to use Tor") {
+                        Write-Host "✅ Successfully retrieved IP through Tor" -ForegroundColor Green
+                        return $result.Trim()
+                    }
+                }
+            }
+            catch {
+                Write-Host "⚠️ Failed with $($attempt.Url), trying next..." -ForegroundColor Yellow
+                continue
+            }
+        }
+
+        # Last resort - try with extended timeout
+        try {
+            Write-Host "🔄 Trying last resort check..." -ForegroundColor Yellow
+            $result = & curl.exe --socks5-hostname "127.0.0.1:9050" `
+                               --silent `
+                               --connect-timeout 30 `
+                               --max-time 30 `
+                               --retry 3 `
+                               "https://check.torproject.org/api/ip" 2>$null
+
+            if ($result) {
+                $ipData = $result | ConvertFrom-Json
+                if ($ipData.IsTor -eq $true) {
+                    Write-Host "✅ Successfully retrieved IP through Tor API" -ForegroundColor Green
+                    return $ipData.IP
+                }
+            }
+        }
+        catch {
+            Write-Host "❌ Last resort check failed" -ForegroundColor Red
+        }
+
+        Write-Host "❌ All IP check methods failed" -ForegroundColor Red
+        return $null
+    }
+    catch {
+        Write-Host "❌ Error during IP check: $_" -ForegroundColor Red
+        Write-Host $_.ScriptStackTrace -ForegroundColor Red
+        return $null
+    }
+}
 
     [void] RenewLocalIP() {
         Write-Host "`n🔹 Renewing Local IP..."
@@ -79,96 +165,138 @@ class IPManager {
         Write-Host "✅ Local IP Address Renewed!"
     }
 
+    [bool] VerifyTorProxy() {
+        Write-Host "`n🔹 Verifying Tor SOCKS Proxy..." -ForegroundColor Yellow
+        
+        try {
+            # Check if SOCKS port is open
+            $result = Test-NetConnection -ComputerName 127.0.0.1 -Port 9050 -WarningAction SilentlyContinue
+            if (-not $result.TcpTestSucceeded) {
+                Write-Host "❌ Tor SOCKS proxy port not accessible" -ForegroundColor Red
+                return $false
+            }
+            Write-Host "✅ SOCKS proxy port is open" -ForegroundColor Green
+
+            # Test Tor connectivity
+            $result = & curl.exe --socks5-hostname "127.0.0.1:9050" `
+                               --silent `
+                               --max-time 30 `
+                               --url "https://check.torproject.org" 2>$null
+
+            if ($result -match "Congratulations\. This browser is configured to use Tor") {
+                Write-Host "✅ Tor connection verified" -ForegroundColor Green
+                return $true
+            } else {
+                Write-Host "❌ Not properly connected to Tor network" -ForegroundColor Red
+                return $false
+            }
+        }
+        catch {
+            Write-Host "❌ Error verifying Tor proxy: $_" -ForegroundColor Red
+            return $false
+        }
+    }
+
     [void] ChangePublicIPViaTor() {
         Write-Host "`n🔹 Requesting a New Tor IP..."
     
-        # Check if Tor is running
-        $torRunning = Get-Process -Name "tor" -ErrorAction SilentlyContinue
-        if (-not $torRunning) {
-            Write-Host "❌ Tor is not running. Please start Tor first."
+        # First verify Tor proxy is working
+        if (-not $this.VerifyTorProxy()) {
+            Write-Host "❌ Please ensure Tor is properly configured and running" -ForegroundColor Red
             return
         }
 
-        # Check if Tor's ControlPort 9051 is accessible
-        $connectionTest = Test-NetConnection -ComputerName 127.0.0.1 -Port 9051
-        if (-not $connectionTest.TcpTestSucceeded) {
-            Write-Host "❌ Tor ControlPort 9051 is not accessible. Ensure Tor is configured properly."
+        # Get initial IP
+        $initialIP = $this.GetCurrentIP()
+        if (-not $initialIP) {
+            Write-Host "❌ Failed to get initial IP" -ForegroundColor Red
             return
         }
+        Write-Host "📍 Initial IP: $initialIP" -ForegroundColor Cyan
 
-        # Read the authentication cookie
-        $cookieAuthPath = "C:\Users\Pradeep\AppData\Roaming\tor\control_auth_cookie"
-        if (-not (Test-Path $cookieAuthPath)) {
-            Write-Host "❌ Authentication cookie missing. Please restart Tor."
-            return
-        }
-    
-        $authCookie = [BitConverter]::ToString([System.IO.File]::ReadAllBytes($cookieAuthPath)) -replace '-'
-    
-        if ([string]::IsNullOrWhiteSpace($authCookie)) {
-            Write-Host "❌ Authentication cookie is empty or invalid. Restart Tor and try again."
-            return
-        }
+        # Setup Tor control connection with timeout
+        try {
+            Write-Host "🔄 Opening Tor control connection..." -ForegroundColor Yellow
+            $controller = New-Object System.Net.Sockets.TcpClient
+            $connectResult = $controller.BeginConnect("127.0.0.1", 9051, $null, $null)
+            $waitResult = $connectResult.AsyncWaitHandle.WaitOne(5000, $true)
+        
+            if (-not $waitResult) {
+                Write-Host "❌ Connection timeout" -ForegroundColor Red
+                return
+            }
+            
+            $stream = $controller.GetStream()
+            $stream.ReadTimeout = 5000  # 5 second timeout for reads
+            $stream.WriteTimeout = 5000  # 5 second timeout for writes
+            $writer = New-Object System.IO.StreamWriter($stream)
+            $reader = New-Object System.IO.StreamReader($stream)
+            $writer.AutoFlush = $true
 
-        $retryCount = 0
-        $maxRetries = 3
-        $oldPublicIP = (Invoke-WebRequest -Uri "http://checkip.amazonaws.com" -UseBasicParsing).Content.Trim()
+            # Read authentication cookie
+            $cookieAuthPath = "C:\Users\Pradeep\AppData\Roaming\tor\control_auth_cookie"
+            Write-Host "🔐 Reading authentication cookie..." -ForegroundColor Yellow
+            $authCookie = [BitConverter]::ToString([System.IO.File]::ReadAllBytes($cookieAuthPath)) -replace '-'
+        
+            # Authenticate
+            Write-Host "🔒 Authenticating with Tor control port..." -ForegroundColor Yellow
+            $writer.WriteLine("AUTHENTICATE $authCookie")
+            $response = $reader.ReadLine()
+            
+            if ($response -ne "250 OK") {
+                Write-Host "❌ Authentication failed: $response" -ForegroundColor Red
+                return
+            }
+            Write-Host "✅ Authentication successful" -ForegroundColor Green
 
-        while ($retryCount -lt $maxRetries) {
-            try {
-                # Establish connection to Tor's control port
-                $controller = New-Object System.Net.Sockets.TcpClient
-                $controller.Connect("127.0.0.1", 9051)
-                $stream = $controller.GetStream()
-                $writer = New-Object System.IO.StreamWriter($stream)
-                $writer.AutoFlush = $true
-                $reader = New-Object System.IO.StreamReader($stream)
-
-                # Authenticate with Tor
-                $writer.WriteLine("AUTHENTICATE $authCookie")
-                Start-Sleep -Seconds 2
-                $response = $reader.ReadLine()
-
-                if ($response -notmatch "250 OK") {
-                    Write-Host "❌ Authentication failed: $response"
-                    return
-                }
-
-                # Request a new Tor circuit
-                Write-Host "🔄 Requesting a new Tor circuit..."
-                $writer.WriteLine("SIGNAL NEWNYM")
-                Start-Sleep -Seconds 5
-
-                # Close the connection properly
-                $writer.Close()
-                $reader.Close()
-                $stream.Close()
-                $controller.Close()
-
-                # Wait for the new circuit to establish
-                Start-Sleep -Seconds 10
-
-                # Retrieve the new public IP
-                $newPublicIP = (Invoke-WebRequest -Uri "http://checkip.amazonaws.com" -UseBasicParsing).Content.Trim()
-
-                if ($newPublicIP -ne $oldPublicIP -and $newPublicIP -match "^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$") {
-                    Write-Host "✅ New Public IP: $newPublicIP"
-                    $this.PublicIP = $newPublicIP
-                    return  # Exit loop if IP has changed
-                } else {
-                    Write-Host "❌ Public IP did not change. Retrying ($($retryCount + 1)/$maxRetries)..."
-                    Start-Sleep -Seconds 5
-                }
-            } catch {
-                Write-Host "❌ Failed to communicate with Tor. Error: $_"
+            # Request new circuit
+            Write-Host "`n🔄 Requesting new circuit..." -ForegroundColor Yellow
+            $writer.WriteLine("SIGNAL NEWNYM")
+            $response = $reader.ReadLine()
+            
+            if ($response -ne "250 OK") {
+                Write-Host "❌ Failed to request new circuit: $response" -ForegroundColor Red
+                return
             }
 
-            $retryCount++
+            # Wait for circuit establishment
+            Write-Host "⏳ Establishing new circuit..." -ForegroundColor Yellow
+            $totalSeconds = 10
+            for ($second = 1; $second -le $totalSeconds; $second++) {
+                $percent = [math]::Round(($second / $totalSeconds) * 100)
+                $progressBar = "[" + ("=" * [math]::Round($percent/5)) + (" " * (20 - [math]::Round($percent/5))) + "]"
+                Write-Host "`r$progressBar $percent% Complete" -NoNewline -ForegroundColor Cyan
+                Start-Sleep -Seconds 1
+            }
+            Write-Host "`r✓ Circuit establishment complete                        " -ForegroundColor Green
+
+            # Verify IP change
+            Write-Host "`n📡 Verifying IP change..." -ForegroundColor Yellow
+            $newIP = $this.GetCurrentIP()
+            if ($newIP) {
+                Write-Host "📍 New IP: $newIP" -ForegroundColor Cyan
+                if ($newIP -ne $initialIP) {
+                    Write-Host "✅ IP change successful!" -ForegroundColor Green
+                    $this.PublicIP = $newIP
+                }
+                else {
+                    Write-Host "⚠️ IP remained the same" -ForegroundColor Yellow
+                }
+            }
+            else {
+                Write-Host "❌ Failed to verify new IP" -ForegroundColor Red
+            }
+
+            # Cleanup
+            $writer.Close()
+            $reader.Close()
+            $stream.Close()
+            $controller.Close()
         }
-
-        Write-Host "❌ Maximum retries reached. Public IP did not change. Try restarting Tor."
+        catch {
+            Write-Host "`n❌ Error during IP change: $_" -ForegroundColor Red
+        }
     }
-
 }
 
 # --------------------- CLASS: Router Manager ---------------------
