@@ -152,44 +152,57 @@ MaxCircuitDirtiness 10
 
 [string] GetCurrentIP() {
     try {
-        Write-Host "📡 Setting up SOCKS proxy connection..." -ForegroundColor Yellow
-
-        # Configure WebClient for Tor SOCKS proxy
-        $socksProxy = "127.0.0.1:9050"
+        Write-Host "📡 Setting up Tor SOCKS proxy connection..." -ForegroundColor Yellow
         
-        # Try using system.net.webclient with default proxy
+        # Force using curl with Tor SOCKS proxy
         try {
-            Write-Host "🔍 Attempting direct IP check first..." -ForegroundColor Yellow
-            $webClient = New-Object System.Net.WebClient
-            $ip = $webClient.DownloadString("https://api.ipify.org").Trim()
-            Write-Host "✅ Got IP directly: $ip" -ForegroundColor Green
-            return $ip
+            Write-Host "🔍 Checking IP through Tor..." -ForegroundColor Yellow
+            
+            # Explicitly use curl with socks5h to force DNS resolution through Tor
+            $result = & curl.exe --socks5-hostname "127.0.0.1:9050" `
+                               --silent `
+                               --max-time 30 `
+                               --retry 3 `
+                               --retry-delay 2 `
+                               --url "https://check.torproject.org/api/ip" 2>$null
+
+            if ($result) {
+                $ipData = $result | ConvertFrom-Json
+                if ($ipData.IsTor -eq $true) {
+                    Write-Host "✅ Connected through Tor successfully" -ForegroundColor Green
+                    return $ipData.IP
+                } else {
+                    Write-Host "⚠️ Connection not using Tor" -ForegroundColor Yellow
+                    return $null
+                }
+            }
         }
         catch {
-            Write-Host "⚠️ Direct IP check failed, trying with curl..." -ForegroundColor Yellow
+            Write-Host "⚠️ Primary check failed, trying alternate method..." -ForegroundColor Yellow
             
-            # Try using curl with socks5 proxy
+            # Fallback to direct check with check.torproject.org
             try {
-                $result = curl.exe --socks5 $socksProxy -s https://api.ipify.org
-                if ($result -match "^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$") {
-                    Write-Host "✅ Got IP via curl: $result" -ForegroundColor Green
-                    return $result
+                $result = & curl.exe --socks5-hostname "127.0.0.1:9050" `
+                                   --silent `
+                                   --max-time 30 `
+                                   --url "https://check.torproject.org" 2>$null
+                
+                if ($result -match "Congratulations\. This browser is configured to use Tor") {
+                    $ip = & curl.exe --socks5-hostname "127.0.0.1:9050" `
+                                   --silent `
+                                   "https://api.ipify.org"
+                    if ($ip -match "^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$") {
+                        Write-Host "✅ Verified Tor connection" -ForegroundColor Green
+                        return $ip
+                    }
+                } else {
+                    Write-Host "⚠️ Not connected through Tor network" -ForegroundColor Yellow
+                    return $null
                 }
             }
             catch {
-                Write-Host "⚠️ Curl attempt failed, trying wget..." -ForegroundColor Yellow
-            }
-
-            # Try using wget as last resort
-            try {
-                $wgetResult = wget.exe --no-check-certificate --quiet --output-document=- https://api.ipify.org
-                if ($wgetResult -match "^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$") {
-                    Write-Host "✅ Got IP via wget: $wgetResult" -ForegroundColor Green
-                    return $wgetResult
-                }
-            }
-            catch {
-                Write-Host "⚠️ wget attempt failed..." -ForegroundColor Yellow
+                Write-Host "❌ Failed to verify Tor connection" -ForegroundColor Red
+                return $null
             }
         }
 
@@ -197,14 +210,18 @@ MaxCircuitDirtiness 10
         return $null
     }
     catch {
-        Write-Host "❌ Error getting IP: $_" -ForegroundColor Red
-        Write-Host "Stack Trace: $($_.ScriptStackTrace)" -ForegroundColor Red
+        Write-Host "❌ Error during IP check: $_" -ForegroundColor Red
         return $null
     }
 }
 
 [void] TestIPChange() {
     Write-Host "`n🔹 Testing Tor IP Change Functionality..." -ForegroundColor Yellow
+
+    if (-not $this.VerifyTorProxy()) {
+        Write-Host "❌ Please check Tor configuration and try again" -ForegroundColor Red
+        return
+    }
 
     # First get current IP
     Write-Host "📡 Fetching initial IP..." -ForegroundColor Cyan
@@ -350,6 +367,38 @@ MaxCircuitDirtiness 10
     }
     catch {
         Write-Host "`n❌ Error during IP change test: $_" -ForegroundColor Red
+    }
+}
+
+[bool] VerifyTorProxy() {
+    Write-Host "`n🔹 Verifying Tor SOCKS Proxy..." -ForegroundColor Yellow
+    
+    try {
+        # Check if SOCKS port is open
+        $result = Test-NetConnection -ComputerName 127.0.0.1 -Port 9050 -WarningAction SilentlyContinue
+        if (-not $result.TcpTestSucceeded) {
+            Write-Host "❌ Tor SOCKS proxy port not accessible" -ForegroundColor Red
+            return $false
+        }
+        Write-Host "✅ SOCKS proxy port is open" -ForegroundColor Green
+
+        # Test Tor connectivity
+        $result = & curl.exe --socks5-hostname "127.0.0.1:9050" `
+                           --silent `
+                           --max-time 30 `
+                           --url "https://check.torproject.org" 2>$null
+
+        if ($result -match "Congratulations\. This browser is configured to use Tor") {
+            Write-Host "✅ Tor connection verified" -ForegroundColor Green
+            return $true
+        } else {
+            Write-Host "❌ Not properly connected to Tor network" -ForegroundColor Red
+            return $false
+        }
+    }
+    catch {
+        Write-Host "❌ Error verifying Tor proxy: $_" -ForegroundColor Red
+        return $false
     }
 }
 
@@ -517,77 +566,6 @@ OptimisticData auto
             return # Valid in void method as it's just exiting
         }
     }
-    
-    Write-Host "`n⚠️ Tor needs to be restarted for changes to take effect" -ForegroundColor Yellow
-    Write-Host "⚠️ After restart, wait 30 seconds before testing IP change" -ForegroundColor Yellow
-    $restart = Read-Host "Would you like to restart Tor now? (y/n)"
-    if ($restart -eq 'y') {
-        $this.RestartTor()
-        Write-Host "`n⏳ Waiting 30 seconds for Tor to establish initial circuits..." -ForegroundColor Yellow
-        $totalSeconds = 30
-        for ($second = 1; $second -le $totalSeconds; $second++) {
-            $percent = [math]::Round(($second / $totalSeconds) * 100)
-            $progressBar = "[" + ("=" * [math]::Round($percent/5)) + (" " * (20 - [math]::Round($percent/5))) + "]"
-            Write-Host "`r$progressBar $percent% Complete: $second/$totalSeconds seconds" -NoNewline -ForegroundColor Cyan
-            Start-Sleep -Seconds 1
-        }
-        Write-Host "`r✅ Tor initialization complete                                        " -ForegroundColor Green
-    }
-}
-
-[void] __EnhanceExitNodeConfiguration() {
-    Write-Host "`n🔹 Enhancing Exit Node Configuration..." -ForegroundColor Yellow
-    
-    # Backup existing config
-    $backupPath = "$($this.TorConfigPath).backup"
-    Copy-Item -Path $this.TorConfigPath -Destination $backupPath -Force
-    Write-Host "✅ Created backup at: $backupPath" -ForegroundColor Green
-
-    # Read existing config
-    $config = Get-Content $this.TorConfigPath
-
-    # Enhanced exit node settings with corrected options
-    $exitNodeSettings = @"
-# Exit Node Configuration
-ExitNodes {us},{de},{nl},{fr},{gb},{se},{ch},{ca},{jp},{au}
-ExcludeExitNodes {in},{cn},{ru},{ir},{kp},{sy},{pk},{cu}
-StrictNodes 0
-NewCircuitPeriod 10
-MaxCircuitDirtiness 30
-EnforceDistinctSubnets 1
-NumEntryGuards 8
-NumDirectoryGuards 3
-UseEntryGuards 1
-UseMicrodescriptors 1
-CircuitStreamTimeout 30
-ClientOnly 1
-ConnectionPadding 1
-PathsNeededToBuildCircuits 0.95
-SafeLogging 1
-SafeSocks 1
-"@
-
-    # Check if settings already exist and remove them
-    $config = $config | Where-Object { 
-        $_ -notmatch "ExitNodes|ExcludeExitNodes|StrictNodes|NewCircuitPeriod|MaxCircuitDirtiness|EnforceDistinctSubnets|NumEntryGuards|NumDirectoryGuards|UseEntryGuards|UseMicrodescriptors|CircuitStreamTimeout|ClientOnly|ConnectionPadding|PathsNeededToBuildCircuits|SafeLogging|SafeSocks"
-    }
-
-    # Keep only the basic configuration
-    $basicConfig = @"
-ControlPort 9051
-CookieAuthentication 1
-CookieAuthFile $($this.AuthCookiePath)
-DataDirectory $($this.TorDataDir)
-"@
-
-    # Combine configurations
-    $newConfig = $basicConfig + "`n" + $exitNodeSettings
-    
-    # Save new configuration
-    Set-Content -Path $this.TorConfigPath -Value $newConfig
-    Write-Host "✅ Enhanced exit node configuration saved" -ForegroundColor Green
-    Write-Host "`n📋 New exit node settings:" -ForegroundColor Cyan
-    Write-Host $exitNodeSettings
     
     Write-Host "`n⚠️ Tor needs to be restarted for changes to take effect" -ForegroundColor Yellow
     Write-Host "⚠️ After restart, wait 30 seconds before testing IP change" -ForegroundColor Yellow
