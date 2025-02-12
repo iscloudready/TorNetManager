@@ -1,0 +1,51 @@
+# config.json
+{
+    "Tor": {
+        "Paths": {
+            "TorExecutable": "C:\\DevOps\\tor\\tor\\tor.exe",
+            "BaseDirectory": "$env:APPDATA\\tor",
+            "ConfigFile": "$env:APPDATA\\tor\\torrc",
+            "DataDirectory": "$env:APPDATA\\tor",
+            "CookieFile": "$env:APPDATA\\tor\\control_auth_cookie"
+        },
+        "Network": {
+            "ControlPort": 9051,
+            "SocksPort": 9050,
+            "CircuitTimeout": 10,
+            "MaxCircuitDirtiness": 30,
+            "NewCircuitPeriod": 10,
+            "IPRotationInterval": 300
+        },
+        "ExitNodes": {
+            "Preferred": [
+                "us", "de", "nl", "fr", "gb", "se", "ch", "ca", "jp", "au",
+                "no", "dk", "fi", "is", "nz", "sg", "kr", "ee", "lv", "lt"
+            ],
+            "Excluded": [
+                "cn", "ru", "ir", "kp", "sy", "pk", "cu", "vn", "by", "ve"
+            ]
+        },
+        "Security": {
+            "StrictNodes": 1,
+            "EnforceDistinctSubnets": 1,
+            "NumEntryGuards": 8,
+            "UseEntryGuards": 1,
+            "SafeLogging": 1,
+            "ClientOnly": 1
+        },
+        "IPCheckServices": [
+            {
+                "Url": "https://api.ipify.org",
+                "Timeout": 10
+            },
+            {
+                "Url": "https://icanhazip.com",
+                "Timeout": 15
+            },
+            {
+                "Url": "https://ident.me",
+                "Timeout": 20
+            }
+        ]
+    }
+}
