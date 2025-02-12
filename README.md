@@ -161,6 +161,180 @@ If `torrc` is missing, the script will create it automatically.
    - Verify file permissions
    - Check authentication cookies
 
+# 🔧 TorTroubleshooter
+
+A comprehensive PowerShell-based diagnostic and management tool for Tor connections.
+
+## 🚀 Features
+
+### Diagnostics & Monitoring
+- ✅ Full System Diagnostics
+- 🔍 Tor Installation Verification
+- 📊 Configuration Analysis
+- 💻 Process Monitoring
+- 🌐 Network Connectivity Tests
+
+### IP Management
+- 🔄 Automated IP Rotation
+- ✨ Multiple IP Verification Services
+- 📡 Circuit Creation Monitoring
+- 🛡️ Exit Node Management
+- 📊 Progress Tracking
+
+### Security Features
+- 🔐 Cookie Authentication
+- 🛡️ GeoIP Configuration
+- 🔥 Firewall Management
+- 🔍 Port Verification
+- 🚦 Connection Status Monitoring
+
+## 📋 Menu Options
+
+1. **Run Full Diagnostics**
+   - Complete system check
+   - Configuration verification
+   - Network testing
+   - Authentication validation
+
+2. **Check Tor Installation**
+   - Version verification
+   - Path validation
+   - Binary integrity check
+
+3. **Verify Tor Configuration**
+   - Config file analysis
+   - Required settings check
+   - Path verification
+   - Default config creation if missing
+
+4. **Check Tor Process**
+   - Process status monitoring
+   - Resource usage tracking
+   - Multiple instance prevention
+
+5. **Test Control Port**
+   - Port accessibility check
+   - Connection testing
+   - Firewall verification
+
+6. **Verify Authentication**
+   - Cookie validation
+   - Permission checking
+   - Path verification
+
+7. **Check Network Connectivity**
+   - Internet connection testing
+   - Tor network accessibility
+   - DNS resolution check
+
+8. **Test IP Change Functionality**
+   - Current IP verification
+   - Circuit creation
+   - IP rotation
+   - Change confirmation
+
+9. **Restart Tor**
+   - Safe process termination
+   - Clean restart
+   - Status verification
+
+10. **Enhance Exit Node Configuration**
+    - GeoIP setup
+    - Exit node selection
+    - Circuit parameters
+    - Performance optimization
+
+## 🛠️ Usage
+
+```powershell
+# Launch the troubleshooter
+.\TorTroubleshooter.ps1
+
+# Follow the interactive menu to:
+# - Diagnose issues
+# - Configure Tor
+# - Manage IP changes
+# - Monitor performance
+```
+
+## ⚙️ Configuration
+
+### Tor Settings
+```ini
+# Basic Configuration
+ControlPort 9051
+CookieAuthentication 1
+CookieAuthFile [path]\control_auth_cookie
+DataDirectory [path]
+
+# Circuit Configuration
+MaxCircuitDirtiness 30
+NewCircuitPeriod 10
+EnforceDistinctSubnets 1
+```
+
+### Exit Node Configuration
+```ini
+# Node Selection
+ExitNodes {us},{de},{nl},{fr},{gb},{se},{ch},{ca},{jp},{au}
+StrictNodes 1
+ExcludeNodes BadExit,{in},{cn},{ru},{ir}
+```
+
+## 🔍 Diagnostic Details
+
+### IP Change Verification
+- Multiple IP checking services
+- Tor connection verification
+- Circuit establishment monitoring
+- Exit node validation
+
+### Connection Security
+- Cookie authentication
+- Control port verification
+- Process isolation
+- Circuit separation
+
+### Error Handling
+- Detailed error messages
+- Progress indicators
+- Status tracking
+- Recovery suggestions
+
+## 🎯 Troubleshooting Tips
+
+1. **IP Not Changing**
+   - Wait for circuit establishment
+   - Check exit node configuration
+   - Verify SOCKS proxy settings
+   - Ensure Tor is running
+
+2. **Authentication Issues**
+   - Verify cookie file exists
+   - Check file permissions
+   - Restart Tor service
+   - Regenerate authentication
+
+3. **Connection Problems**
+   - Check firewall settings
+   - Verify ports are open
+   - Test network connectivity
+   - Check Tor status
+
+## 💡 Best Practices
+
+- Run as Administrator for full functionality
+- Allow time for circuit establishment
+- Monitor resource usage
+- Keep Tor updated
+- Regular configuration checks
+
+## 🔧 Maintenance
+
+- Regular GeoIP updates
+- Configuration backups
+- Log monitoring
+- Performance optimization
 ---
 
 ## 📜 License
