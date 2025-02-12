@@ -150,175 +150,208 @@ MaxCircuitDirtiness 10
         }
     }
 
-    [void] TestIPChange() {
-        Write-Host "`n🔹 Testing Tor IP Change Functionality..." -ForegroundColor Yellow
-    
-        # First get current IP with timeout
+[string] GetCurrentIP() {
+    try {
+        Write-Host "📡 Setting up SOCKS proxy connection..." -ForegroundColor Yellow
+
+        # Configure WebClient for Tor SOCKS proxy
+        $socksProxy = "127.0.0.1:9050"
+        
+        # Try using system.net.webclient with default proxy
         try {
-            Write-Host "📡 Fetching initial IP..." -ForegroundColor Cyan
-            $ProgressPreference = 'SilentlyContinue'  # Disable default progress bar
-            $timeoutScript = {
-                Invoke-WebRequest -Uri "https://api.ipify.org" -UseBasicParsing -TimeoutSec 10
-            }
-            $job = Start-Job -ScriptBlock $timeoutScript
-            $initialIP = Wait-Job -Job $job -Timeout 15 | Receive-Job
-            if ($initialIP) {
-                Write-Host "📍 Initial IP: $($initialIP.Content)" -ForegroundColor Cyan
-            } else {
-                Write-Host "❌ Failed to get initial IP (timeout)" -ForegroundColor Red
-                return
-            }
+            Write-Host "🔍 Attempting direct IP check first..." -ForegroundColor Yellow
+            $webClient = New-Object System.Net.WebClient
+            $ip = $webClient.DownloadString("https://api.ipify.org").Trim()
+            Write-Host "✅ Got IP directly: $ip" -ForegroundColor Green
+            return $ip
         }
         catch {
-            Write-Host "❌ Failed to get initial IP: $_" -ForegroundColor Red
+            Write-Host "⚠️ Direct IP check failed, trying with curl..." -ForegroundColor Yellow
+            
+            # Try using curl with socks5 proxy
+            try {
+                $result = curl.exe --socks5 $socksProxy -s https://api.ipify.org
+                if ($result -match "^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$") {
+                    Write-Host "✅ Got IP via curl: $result" -ForegroundColor Green
+                    return $result
+                }
+            }
+            catch {
+                Write-Host "⚠️ Curl attempt failed, trying wget..." -ForegroundColor Yellow
+            }
+
+            # Try using wget as last resort
+            try {
+                $wgetResult = wget.exe --no-check-certificate --quiet --output-document=- https://api.ipify.org
+                if ($wgetResult -match "^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$") {
+                    Write-Host "✅ Got IP via wget: $wgetResult" -ForegroundColor Green
+                    return $wgetResult
+                }
+            }
+            catch {
+                Write-Host "⚠️ wget attempt failed..." -ForegroundColor Yellow
+            }
+        }
+
+        Write-Host "❌ All IP check methods failed" -ForegroundColor Red
+        return $null
+    }
+    catch {
+        Write-Host "❌ Error getting IP: $_" -ForegroundColor Red
+        Write-Host "Stack Trace: $($_.ScriptStackTrace)" -ForegroundColor Red
+        return $null
+    }
+}
+
+[void] TestIPChange() {
+    Write-Host "`n🔹 Testing Tor IP Change Functionality..." -ForegroundColor Yellow
+
+    # First get current IP
+    Write-Host "📡 Fetching initial IP..." -ForegroundColor Cyan
+    $initialIP = $this.GetCurrentIP()
+    if (-not $initialIP) {
+        Write-Host "❌ Failed to get initial IP" -ForegroundColor Red
+        return
+    }
+    Write-Host "📍 Initial IP: $initialIP" -ForegroundColor Cyan
+
+    # Setup Tor control connection with timeout
+    try {
+        Write-Host "🔄 Opening Tor control connection..." -ForegroundColor Yellow
+        $controller = New-Object System.Net.Sockets.TcpClient
+        $connectResult = $controller.BeginConnect("127.0.0.1", 9051, $null, $null)
+        $waitResult = $connectResult.AsyncWaitHandle.WaitOne(5000, $true)
+    
+        if (-not $waitResult) {
+            Write-Host "❌ Connection timeout" -ForegroundColor Red
+            return
+        }
+    
+        $stream = $controller.GetStream()
+        $stream.ReadTimeout = 5000  # 5 second timeout for reads
+        $stream.WriteTimeout = 5000  # 5 second timeout for writes
+        $writer = New-Object System.IO.StreamWriter($stream)
+        $reader = New-Object System.IO.StreamReader($stream)
+        $writer.AutoFlush = $true
+
+        # Read authentication cookie
+        Write-Host "🔐 Reading authentication cookie..." -ForegroundColor Yellow
+        $authCookie = [BitConverter]::ToString([System.IO.File]::ReadAllBytes("$($this.TorDataDir)\control_auth_cookie")) -replace '-'
+    
+        # Authenticate
+        Write-Host "🔒 Authenticating with Tor control port..." -ForegroundColor Yellow
+        $writer.WriteLine("AUTHENTICATE $authCookie")
+        try {
+            $response = $reader.ReadLine()
+            if ($response -ne "250 OK") {
+                Write-Host "❌ Authentication failed: $response" -ForegroundColor Red
+                return
+            }
+            Write-Host "✅ Authentication successful" -ForegroundColor Green
+        }
+        catch {
+            Write-Host "❌ Authentication timed out" -ForegroundColor Red
             return
         }
 
-        # Setup Tor control connection with timeout
-        try {
-            Write-Host "🔄 Opening Tor control connection..." -ForegroundColor Yellow
-            $controller = New-Object System.Net.Sockets.TcpClient
-            $connectResult = $controller.BeginConnect("127.0.0.1", 9051, $null, $null)
-            $waitResult = $connectResult.AsyncWaitHandle.WaitOne(5000, $true)
+        # Test circuit creation
+        Write-Host "`n🔄 Testing circuit creation..." -ForegroundColor Yellow
+    
+        for ($i = 1; $i -le 3; $i++) {
+            Write-Host "`n📍 Attempt $i of 3:" -ForegroundColor Cyan
         
-            if (-not $waitResult) {
-                Write-Host "❌ Connection timeout" -ForegroundColor Red
-                return
-            }
-        
-            $stream = $controller.GetStream()
-            $stream.ReadTimeout = 5000  # 5 second timeout for reads
-            $stream.WriteTimeout = 5000  # 5 second timeout for writes
-            $writer = New-Object System.IO.StreamWriter($stream)
-            $reader = New-Object System.IO.StreamReader($stream)
-            $writer.AutoFlush = $true
+            # Get circuit info with progress indicator
+            Write-Host "📊 Checking current circuits..." -ForegroundColor Yellow
+            $circuits = @()
+            $writer.WriteLine("GETINFO circuit-status")
+            $spinChars = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+            $spinIdx = 0
+            $timeoutTimer = [System.Diagnostics.Stopwatch]::StartNew()
 
-            # Read authentication cookie
-            Write-Host "🔐 Reading authentication cookie..." -ForegroundColor Yellow
-            $authCookie = [BitConverter]::ToString([System.IO.File]::ReadAllBytes("$($this.TorDataDir)\control_auth_cookie")) -replace '-'
-        
-            # Authenticate
-            Write-Host "🔒 Authenticating with Tor control port..." -ForegroundColor Yellow
-            $writer.WriteLine("AUTHENTICATE $authCookie")
+            while ($timeoutTimer.ElapsedMilliseconds -lt 5000) {
+                try {
+                    Write-Host "`r$($spinChars[$spinIdx % $spinChars.Length]) Reading circuit info..." -NoNewline
+                    $spinIdx++
+                    $line = $reader.ReadLine()
+                    if ($line -eq ".") { break }
+                    if ($line -ne "250+circuit-status=") {
+                        $circuits += $line
+                    }
+                }
+                catch [System.IO.IOException] {
+                    Write-Host "`n⚠️ Circuit status check timed out" -ForegroundColor Yellow
+                    break
+                }
+            }
+            Write-Host "`r✓ Active circuits: $($circuits.Count)           " -ForegroundColor Green
+
+            # Request new circuit with progress bar
+            Write-Host "`n🔄 Requesting new circuit..." -ForegroundColor Yellow
+            $writer.WriteLine("SIGNAL NEWNYM")
             try {
                 $response = $reader.ReadLine()
                 if ($response -ne "250 OK") {
-                    Write-Host "❌ Authentication failed: $response" -ForegroundColor Red
-                    return
-                }
-                Write-Host "✅ Authentication successful" -ForegroundColor Green
-            }
-            catch {
-                Write-Host "❌ Authentication timed out" -ForegroundColor Red
-                return
-            }
-
-            # Test circuit creation
-            Write-Host "`n🔄 Testing circuit creation..." -ForegroundColor Yellow
-        
-            for ($i = 1; $i -le 3; $i++) {
-                Write-Host "`n📍 Attempt $i of 3:" -ForegroundColor Cyan
-            
-                # Get circuit info with progress indicator
-                Write-Host "📊 Checking current circuits..." -ForegroundColor Yellow
-                $circuits = @()
-                $writer.WriteLine("GETINFO circuit-status")
-                $spinChars = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
-                $spinIdx = 0
-                $timeoutTimer = [System.Diagnostics.Stopwatch]::StartNew()
-
-                while ($timeoutTimer.ElapsedMilliseconds -lt 5000) {
-                    try {
-                        Write-Host "`r$($spinChars[$spinIdx % $spinChars.Length]) Reading circuit info..." -NoNewline
-                        $spinIdx++
-                        $line = $reader.ReadLine()
-                        if ($line -eq ".") { break }
-                        if ($line -ne "250+circuit-status=") {
-                            $circuits += $line
-                        }
-                    }
-                    catch [System.IO.IOException] {
-                        Write-Host "`n⚠️ Circuit status check timed out" -ForegroundColor Yellow
-                        break
-                    }
-                }
-                Write-Host "`r✓ Active circuits: $($circuits.Count)           " -ForegroundColor Green
-
-                # Request new circuit with progress bar
-                Write-Host "`n🔄 Requesting new circuit..." -ForegroundColor Yellow
-                $writer.WriteLine("SIGNAL NEWNYM")
-                try {
-                    $response = $reader.ReadLine()
-                    if ($response -ne "250 OK") {
-                        Write-Host "❌ Failed to request new circuit: $response" -ForegroundColor Red
-                        continue
-                    }
-                }
-                catch {
-                    Write-Host "❌ New circuit request timed out" -ForegroundColor Red
+                    Write-Host "❌ Failed to request new circuit: $response" -ForegroundColor Red
                     continue
                 }
-
-                # Circuit establishment progress
-                Write-Host "⏳ Establishing new circuit..." -ForegroundColor Yellow
-                $totalSeconds = 10
-                for ($second = 1; $second -le $totalSeconds; $second++) {
-                    $percent = [math]::Round(($second / $totalSeconds) * 100)
-                    $progressBar = "[" + ("=" * [math]::Round($percent/5)) + (" " * (20 - [math]::Round($percent/5))) + "]"
-                    Write-Host "`r$progressBar $percent% Complete" -NoNewline -ForegroundColor Cyan
-                    Start-Sleep -Seconds 1
-                }
-                Write-Host "`r✓ Circuit establishment complete                        " -ForegroundColor Green
-
-                # Verify IP change with timeout
-                Write-Host "`n📡 Verifying IP change..." -ForegroundColor Yellow
-                try {
-                    $timeoutScript = {
-                        Invoke-WebRequest -Uri "https://api.ipify.org" -UseBasicParsing -TimeoutSec 10
-                    }
-                    $job = Start-Job -ScriptBlock $timeoutScript
-                    $newIP = Wait-Job -Job $job -Timeout 15 | Receive-Job
-                
-                    if ($newIP) {
-                        Write-Host "📍 New IP: $($newIP.Content)" -ForegroundColor Cyan
-                        if ($newIP.Content -ne $initialIP.Content) {
-                            Write-Host "✅ IP change successful!" -ForegroundColor Green
-                            break
-                        } else {
-                            Write-Host "⚠️ IP remained the same" -ForegroundColor Yellow
-                        }
-                    } else {
-                        Write-Host "❌ Failed to verify new IP (timeout)" -ForegroundColor Red
-                    }
-                }
-                catch {
-                    Write-Host "❌ Failed to verify new IP: $_" -ForegroundColor Red
-                }
-
-                # Cooldown between attempts
-                if ($i -lt 3) {
-                    Write-Host "`n⏳ Cooling down before next attempt..." -ForegroundColor Yellow
-                    $cooldownTime = 15
-                    for ($j = 1; $j -le $cooldownTime; $j++) {
-                        $percent = [math]::Round(($j / $cooldownTime) * 100)
-                        $progressBar = "[" + ("=" * [math]::Round($percent/5)) + (" " * (20 - [math]::Round($percent/5))) + "]"
-                        Write-Host "`r$progressBar $percent% Cooldown: $j/$cooldownTime seconds" -NoNewline -ForegroundColor Cyan
-                        Start-Sleep -Seconds 1
-                    }
-                    Write-Host "`r✓ Cooldown complete                                        " -ForegroundColor Green
-                }
+            }
+            catch {
+                Write-Host "❌ New circuit request timed out" -ForegroundColor Red
+                continue
             }
 
-            # Cleanup
-            $writer.Close()
-            $reader.Close()
-            $stream.Close()
-            $controller.Close()
+            # Circuit establishment progress
+            Write-Host "⏳ Establishing new circuit..." -ForegroundColor Yellow
+            $totalSeconds = 10
+            for ($second = 1; $second -le $totalSeconds; $second++) {
+                $percent = [math]::Round(($second / $totalSeconds) * 100)
+                $progressBar = "[" + ("=" * [math]::Round($percent/5)) + (" " * (20 - [math]::Round($percent/5))) + "]"
+                Write-Host "`r$progressBar $percent% Complete" -NoNewline -ForegroundColor Cyan
+                Start-Sleep -Seconds 1
+            }
+            Write-Host "`r✓ Circuit establishment complete                        " -ForegroundColor Green
+
+            # Verify IP change
+            Write-Host "`n📡 Verifying IP change..." -ForegroundColor Yellow
+            $newIP = $this.GetCurrentIP()
+            if ($newIP) {
+                Write-Host "📍 New IP: $newIP" -ForegroundColor Cyan
+                if ($newIP -ne $initialIP) {
+                    Write-Host "✅ IP change successful!" -ForegroundColor Green
+                    break
+                }
+                else {
+                    Write-Host "⚠️ IP remained the same" -ForegroundColor Yellow
+                }
+            }
+            else {
+                Write-Host "❌ Failed to verify new IP" -ForegroundColor Red
+            }
+
+            # Cooldown between attempts
+            if ($i -lt 3) {
+                Write-Host "`n⏳ Cooling down before next attempt..." -ForegroundColor Yellow
+                $cooldownTime = 15
+                for ($j = 1; $j -le $cooldownTime; $j++) {
+                    $percent = [math]::Round(($j / $cooldownTime) * 100)
+                    $progressBar = "[" + ("=" * [math]::Round($percent/5)) + (" " * (20 - [math]::Round($percent/5))) + "]"
+                    Write-Host "`r$progressBar $percent% Cooldown: $j/$cooldownTime seconds" -NoNewline -ForegroundColor Cyan
+                    Start-Sleep -Seconds 1
+                }
+                Write-Host "`r✓ Cooldown complete                                        " -ForegroundColor Green
+            }
         }
-        catch {
-            Write-Host "`n❌ Error during IP change test: $_" -ForegroundColor Red
-        }
+
+        # Cleanup
+        $writer.Close()
+        $reader.Close()
+        $stream.Close()
+        $controller.Close()
     }
+    catch {
+        Write-Host "`n❌ Error during IP change test: $_" -ForegroundColor Red
+    }
+}
 
     [void] CheckNetworkConnectivity() {
         Write-Host "`n🔹 Checking Network Connectivity..." -ForegroundColor Yellow
@@ -416,29 +449,27 @@ DataDirectory $($this.TorDataDir)
 GeoIPFile $geoipFile
 GeoIPv6File $geoip6File
 
-# Circuit Configuration
-MaxCircuitDirtiness 10
-NewCircuitPeriod 10
-LeaveStreamsUnattached 1
-CircuitBuildTimeout 30
-EnforceDistinctSubnets 1
-
-# Node Selection
-ExitNodes {us},{de},{nl},{fr},{gb},{se},{ch}
+# Force Specific Exit Nodes (one per line for clarity)
+ExitNodes {fr} 
 StrictNodes 1
-ExcludeNodes {in},{cn},{ru},{ir},{kp},{sy},{pk},{cu} BadExit
-ExcludeExitNodes {in},{cn},{ru},{ir},{kp},{sy},{pk},{cu}
+ExcludeNodes BadExit,{in},{cn},{ru},{ir}
 
-# Entry Node Configuration
-NumEntryGuards 6
-UseEntryGuards 0
+# Aggressive Circuit Rotation
+MaxCircuitDirtiness 5
+NewCircuitPeriod 5
+CircuitBuildTimeout 10
+LeaveStreamsUnattached 1
 
-# Security and Performance
-ClientOnly 1
-ConnectionPadding 1
-SafeLogging 1
+# SOCKS Proxy Configuration
+SocksPort 9050
+SocksListenAddress 127.0.0.1
+SOCKSPolicy accept 127.0.0.1
 SafeSocks 1
-OptimisticData 1
+
+# Performance Settings
+FastFirstHopPK 0
+UseEntryGuards 0
+OptimisticData auto
 "@
                 Set-Content -Path $this.TorConfigPath -Value $torrcContent
                 Write-Host "✅ Tor configuration updated with GeoIP paths" -ForegroundColor Green
