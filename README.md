@@ -8,173 +8,208 @@
 
 ## 📜 Description
 
-**TorNetManager** is an advanced PowerShell-based network management tool that provides comprehensive network control and anonymity features. It combines network management capabilities with Tor integration for enhanced privacy and security.
+**TorNetManager** is an advanced **PowerShell-based network management** tool designed to help users **monitor, configure, and anonymize their network connections**. It provides features such as:
+- **Network discovery**
+- **MAC address spoofing**
+- **IP renewal**
+- **Tor-based anonymity**
+- **Port scanning**
+
+The project integrates **Tor** to allow users to dynamically change their public IP address, making it an essential tool for **privacy-conscious users, ethical hackers, and developers**.
 
 ---
 
-## 🔹 Key Features
+## 🔹 Features
 
-### Network Management
-- 🌐 View detailed network information (MAC, IP, Gateway)
-- 🔄 Change MAC address with random generation
-- 📡 Local IP renewal through DHCP
-- 🛜 Router management capabilities
-- 🔍 Network device discovery
+### Core Features
+✅ **View Network Details** – Get **local & public IP, MAC address, and gateway**
+✅ **Change MAC Address** – Generate and apply a **random MAC**
+✅ **Renew Local IP** – Reset DHCP IP settings for a **fresh IP allocation**
+✅ **Tor IP Changer** – **Automate Tor circuit switching** to obtain a new **public IP**
+✅ **Firewall & Security Check** – Configure Windows **Firewall to allow Tor**
+✅ **Network Discovery** – Scan **active devices on the local network**
+✅ **Port Scanner** – Scan common **open ports** on target IPs
+✅ **Router Manager** – Restart your **router remotely** (if supported)
+✅ **Tor Process Management** – Ensure **only one Tor instance is running**
 
-### Tor Integration
-- 🧅 Automated Tor circuit management
-- 🌍 Dynamic IP rotation through Tor
-- ✨ Verified IP changes with multiple fallbacks
-- 🛡️ Tor connection verification
-- 🔒 Secure cookie authentication
-
-### Security Features
-- 🔥 Automatic firewall configuration
-- 🔍 Port scanning capabilities
-- 🛠️ Process management
-- 📊 Network monitoring
-
----
-
-## 📋 Requirements
-
-- Windows 10/11
-- PowerShell 5.1 or higher
-- Tor Browser Bundle or Tor Expert Bundle
-- Administrator privileges (for some features)
+### Advanced Capabilities
+- 🌐 Multiple IP verification services
+- 🔄 Automatic circuit regeneration
+- 📡 DHCP management
+- 🛡️ Comprehensive security checks
+- 🔍 Device fingerprinting
+- 📊 Network statistics
 
 ---
 
-## 🛠️ Installation
-
-1. **Clone the Repository**
-   ```powershell
-   git clone https://github.com/yourusername/TorNetManager.git
-   cd TorNetManager
-   ```
-
-2. **Install Tor**
-   - Download Tor Expert Bundle
-   - Extract to `C:\DevOps\tor\`
-   - Verify installation path: `C:\DevOps\tor\tor\tor.exe`
-
-3. **Configure Tor**
-   The script will automatically:
-   - Create required directories
-   - Generate torrc configuration
-   - Set up authentication
-   - Configure firewall rules
-
----
-
-## 🎯 Usage
-
-### Running the Tool
-```powershell
-.\TorNetManager.ps1
+## 📂 Folder Structure
+```
+TorNetManager/
+│── NetworkManager.ps1     # Main PowerShell script
+│── README.md             # Documentation
+│── LICENSE              # License information
+│── config/
+│   ├── torrc           # Tor configuration file (auto-generated)
+│── scripts/
+│   ├── utilities.ps1    # Helper functions
+│   ├── setup.ps1        # Installation script
+│── docs/
+│   ├── user_guide.md    # User documentation
 ```
 
-### Main Menu Options
-1. 🌐 Get Network Settings
-2. 🔄 Change MAC Address
-3. 📡 Renew Local IP
-4. 🛠️ Install & Configure Tor
-5. 🌍 Change Public IP via Tor
-6. 🔄 Restart Router
-7. 🔍 Discover Devices
-8. 📊 Scan Open Ports
+---
 
-### Tor IP Changing Feature
+## 📖 Setup & Usage
+
+### 📥 1️⃣ Installation
+Clone the repository:
 ```powershell
-# Automatically changes your IP through Tor
-# Verifies the change through multiple services:
-- api.ipify.org
-- icanhazip.com
-- ident.me
-- check.torproject.org
+git clone https://github.com/yourusername/TorNetManager.git
+cd TorNetManager
 ```
+
+### 🛠 2️⃣ Setup
+Run the setup script to configure dependencies:
+```powershell
+.\scripts\setup.ps1
+```
+
+### 🌐 3️⃣ Running the Network Manager
+Launch the main script:
+```powershell
+.\NetworkManager.ps1
+```
+
+Then, **choose an option** from the menu to perform the desired network operation.
 
 ---
 
 ## ⚙️ Configuration
 
-### Tor Configuration
+### 🛠 **Tor Configuration**
+`TorNetManager` automatically generates a valid `torrc` file with the following settings:
 ```ini
-# Automatic torrc generation with secure defaults
+# Basic Configuration
 ControlPort 9051
 CookieAuthentication 1
-CookieAuthFile C:\Users\[username]\AppData\Roaming\tor\control_auth_cookie
+CookieAuthFile C:\Users\yourusername\AppData\Roaming\tor\control_auth_cookie
+DataDirectory C:\Users\yourusername\AppData\Roaming\tor
+
+# Performance Settings
 MaxCircuitDirtiness 10
 NewCircuitPeriod 10
 EnforceDistinctSubnets 1
+NumEntryGuards 8
+UseEntryGuards 1
+CircuitStreamTimeout 30
+ClientOnly 1
 ```
 
-### Network Configuration
-- Automatic adapter detection
-- DHCP configuration management
-- Firewall rule management
-- Process monitoring
+If `torrc` is missing, the script will create it automatically.
 
----
+### 🔥 **Firewall Configuration**
+- Automatic verification of Tor's ControlPort (9051)
+- Windows Firewall rule management
+- Administrator privileges required for modifications
+- SOCKS proxy configuration (port 9050)
 
-## 🛡️ Security Features
-
-### IP Verification
-- Multiple IP checking services
-- Tor connection verification
-- Circuit creation monitoring
+### 🔒 **Security Features**
+- Cookie-based authentication
+- Circuit isolation
+- IP verification through multiple services
 - Connection security checks
 
-### Authentication
-- Cookie-based authentication
-- Secure control port access
-- Process isolation
-- Firewall protection
+---
+
+## 🛡️ Security & Permissions
+
+- **Administrator Rights Required**
+  - Firewall configuration
+  - Network adapter settings
+  - MAC address changes
+  - IP configuration
+
+- **Tor Security**
+  - Automated process management
+  - Authentication handling
+  - Circuit verification
+  - Exit node management
+
+- **Best Practices**
+  - Regular IP rotation
+  - Circuit isolation
+  - Connection verification
+  - Process monitoring
 
 ---
 
-## 📝 Logging & Feedback
+## 🔧 Troubleshooting
 
-The tool provides detailed feedback with:
-- ✅ Success indicators
-- ⚠️ Warning messages
-- ❌ Error notifications
-- 📊 Progress tracking
+### Common Issues
+1. **Tor Connection Failed**
+   - Verify Tor installation
+   - Check firewall rules
+   - Confirm SOCKS proxy status
 
----
+2. **IP Change Issues**
+   - Wait for circuit establishment
+   - Verify exit node configuration
+   - Check network connectivity
 
-## 🤝 Contributing
-
-Contributions are welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Submit a pull request
+3. **Permission Errors**
+   - Run as Administrator
+   - Verify file permissions
+   - Check authentication cookies
 
 ---
 
 ## 📜 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is **open-source** and licensed under the **MIT License**.
+Feel free to **use, modify, and distribute** it.
 
 ---
 
-## ⚠️ Disclaimer
+## 🤝 Contributing
 
-This tool is for educational and research purposes only. Users are responsible for compliance with applicable laws and regulations.
+Want to improve **TorNetManager**?
+🔹 **Fork the repo** & submit PRs
+🔹 **Suggest new features** in the Issues tab
+🔹 **Report bugs** & provide feedback
+
+### Development Guidelines
+1. Follow PowerShell best practices
+2. Maintain consistent error handling
+3. Update documentation
+4. Add tests for new features
 
 ---
 
-## 🆘 Support
+## 📢 Contact
 
-For issues, questions, or suggestions:
-- Create an issue on GitHub
-- Submit a pull request
-- Contact the maintainers
+For **questions, issues, or suggestions**, reach out via:
+📧 **Email:** `your.email@example.com`
+🐙 **GitHub:** [GitHub Profile](https://github.com/yourusername)
 
 ---
 
-## 🎉 Acknowledgments
+## 🚀 Getting Started
 
-- The Tor Project
-- PowerShell Community
-- Contributors & Testers
+Ready to enhance your network privacy and control? Start using **TorNetManager** today!
+
+1. Clone the repository
+2. Run the setup script
+3. Launch NetworkManager.ps1
+4. Choose your desired network operation
+
+## ⭐ Support the Project
+
+- Star the repository
+- Share with others
+- Report issues
+- Contribute code
+- Provide feedback
+
+---
+
+Remember to use this tool responsibly and in compliance with all applicable laws and regulations.
