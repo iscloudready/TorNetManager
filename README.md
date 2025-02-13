@@ -21,16 +21,25 @@ The project integrates **Tor** to allow users to dynamically change their public
 
 ## 🔹 Features
 
-### Core Features
-✅ **View Network Details** – Get **local & public IP, MAC address, and gateway**
-✅ **Change MAC Address** – Generate and apply a **random MAC**
-✅ **Renew Local IP** – Reset DHCP IP settings for a **fresh IP allocation**
-✅ **Tor IP Changer** – **Automate Tor circuit switching** to obtain a new **public IP**
-✅ **Firewall & Security Check** – Configure Windows **Firewall to allow Tor**
-✅ **Network Discovery** – Scan **active devices on the local network**
-✅ **Port Scanner** – Scan common **open ports** on target IPs
-✅ **Router Manager** – Restart your **router remotely** (if supported)
-✅ **Tor Process Management** – Ensure **only one Tor instance is running**
+✅ **Browser & Network Stack Refresh** – Clear **browser cache & network settings for troubleshooting**
+
+✅ **Multi-Profile Support** – Clean data across **all Chrome browser profiles**
+
+✅ **Domain-Specific Cleanup** – Target cleanup for **specific domain data & cookies**
+
+✅ **Automated Process Management** – Handle **browser processes & network services**
+
+✅ **Network Stack Reset** – Reset **Winsock, IP config & DNS cache**
+
+✅ **Smart Cache Cleaning** – Remove **domain-specific or full browser data**
+
+✅ **Cookie Management** – Manage & clear **cookies across profiles**
+
+✅ **Service Worker Cleanup** – Clean **domain workers & local storage**
+
+✅ **Browser Process Control** – Safely **stop & restart browser processes**
+
+✅ **Silent Mode Support** – Run cleanups in **automated no-prompt mode**
 
 ### Advanced Capabilities
 - 🌐 Multiple IP verification services
@@ -336,6 +345,59 @@ ExcludeNodes BadExit,{in},{cn},{ru},{ir}
 - Log monitoring
 - Performance optimization
 ---
+
+# 🌐 FlushNetwork - Network & Browser Cache Cleanup Tool
+
+A PowerShell-based utility for managing network configurations and browser cache cleanup.
+
+## ✨ Features
+
+- 🧹 **Browser Cache Cleanup**
+  - Domain-specific or full cache cleanup
+  - Multi-profile support for Chrome
+  - Cookie management
+  - Browser process handling
+
+- 🔄 **Network Stack Reset**
+  - Winsock reset
+  - IP configuration refresh
+  - DNS cache cleanup
+  - Proxy settings reset
+
+- 🎯 **Domain-Specific Operations**
+  - Target specific domain cleanup
+  - Service worker cleanup
+  - Local storage management
+  - IndexedDB cleanup
+
+## 🚀 Usage
+
+```powershell
+# Full cleanup with prompts
+.\FlushNetwork.ps1
+
+# Domain-specific cleanup
+.\FlushNetwork.ps1 -domain "example.com"
+
+# Silent mode
+.\FlushNetwork.ps1 -domain "example.com" -noPrompt
+```
+
+## 🔧 Configuration
+
+The tool supports customization via the `BrowserCleanupConfig` class:
+- Browser paths
+- Cache locations
+- Wait times
+- Cleanup steps
+
+## 🔍 Debug Steps
+
+If issues persist after cleanup:
+1. Clear browser DNS cache
+2. Flush socket pools
+3. Try incognito mode
+4. Clear browser data manually
 
 ## 📜 License
 
